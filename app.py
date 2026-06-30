@@ -11,50 +11,44 @@ app = Flask(__name__)
 URL_IR = "https://view.eumetsat.int/static/MSG/IR108/latest.jpg"
 URL_VIS = "https://view.eumetsat.int/static/MSG/VIS006/latest.jpg"
 
-def bbox_from_radius(lat, lon, raggio_km):
-    dlat = raggio_km / 111
-    dlon = raggio_km / (111 * math.cos(math.radians(lat)))
-    return lat - dlat, lon - dlon, lat + dlat, lon + dlon
-
-@app.route("/realtime_fire")
-def realtime_fire():
-    lat = float(request.args.get("lat"))
-    lon = float(request.args.get("lon"))
-    raggio = float(request.args.get("raggio"))
-
-    # Scarica immagini Meteosat
- def load_image(url):
+def load_image(url):
     try:
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()
-        return Image.open(BytesIO(resp.content)).convert("L")
+        img = Image.open(BytesIO(resp.content)).convert("L")
+        return np.array(img)
     except Exception as e:
         print("Errore immagine:", e)
         return None
 
-ir = load_image(URL_IR)
-vis = load_image(URL_VIS)
+@app.route("/realtime_fire")
+def realtime_fire():
+    try:
+        lat = float(request.args.get("lat"))
+        lon = float(request.args.get("lon"))
+        raggio = float(request.args.get("raggio"))
+    except:
+        return jsonify({"errore": "Parametri non validi"})
 
-if ir is None or vis is None:
-    return jsonify({
-        "errore": "Immagine Meteosat non disponibile",
-        "fonte": "Meteosat realtime"
-    })
+    ir_arr = load_image(URL_IR)
+    vis_arr = load_image(URL_VIS)
 
-
-    ir_arr = np.array(ir)
-    vis_arr = np.array(vis)
+    if ir_arr is None or vis_arr is None:
+        return jsonify({
+            "errore": "Immagine Meteosat non disponibile",
+            "fonte": "Meteosat realtime"
+        })
 
     # Soglie empiriche
-    HOT = 200      # pixel molto caldi
+    HOT = 200
     SMOKE_VIS = 120
     SMOKE_IR = 150
 
-    # Analisi hotspot
-    hot_mask = ir_arr > HOT
-
-    # Analisi fumo (pattern VIS + IR)
-    smoke_mask = (vis_arr < SMOKE_VIS) & (ir_arr > SMOKE_IR)
+    try:
+        hot_mask = ir_arr > HOT
+        smoke_mask = (vis_arr < SMOKE_VIS) & (ir_arr > SMOKE_IR)
+    except Exception as e:
+        return jsonify({"errore": "Analisi immagine fallita", "dettaglio": str(e)})
 
     incendio = bool(hot_mask.any())
     fumo = bool(smoke_mask.any())
@@ -77,3 +71,4 @@ if ir is None or vis is None:
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
+
