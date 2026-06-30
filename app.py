@@ -23,8 +23,24 @@ def realtime_fire():
     raggio = float(request.args.get("raggio"))
 
     # Scarica immagini Meteosat
-    ir = Image.open(BytesIO(requests.get(URL_IR).content)).convert("L")
-    vis = Image.open(BytesIO(requests.get(URL_VIS).content)).convert("L")
+ def load_image(url):
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        return Image.open(BytesIO(resp.content)).convert("L")
+    except Exception as e:
+        print("Errore immagine:", e)
+        return None
+
+ir = load_image(URL_IR)
+vis = load_image(URL_VIS)
+
+if ir is None or vis is None:
+    return jsonify({
+        "errore": "Immagine Meteosat non disponibile",
+        "fonte": "Meteosat realtime"
+    })
+
 
     ir_arr = np.array(ir)
     vis_arr = np.array(vis)
